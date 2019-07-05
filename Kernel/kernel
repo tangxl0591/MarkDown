@@ -1,0 +1,22 @@
+make ARCH=arm CROSS_COMPILE=arm-cortex_a8-linux-gnueabi-
+
+make ARCH=arm CROSS_COMPILE=arm-cortex_a8-linux-gnueabi- s5pv210_defconfig
+
+make ARCH=arm CROSS_COMPILE=arm-linux- s5pv210_defconfig
+
+make ARCH=arm CROSS_COMPILE=arm-linux- -j8
+
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- s5pv210_defconfig
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi-
+
+
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- smdkv210_defconfig
+
+
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- tiny210_defconfig
+
+
