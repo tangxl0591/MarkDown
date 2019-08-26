@@ -680,3 +680,6 @@ int cam_ioctrl(void* camera, int cmd, int param1, void* param2);
 | persist.sys.scan.flashled  | 扫描引擎手电功能，0 不支持 1 支持，默认0  |
 | persist.sys.scan.flashstate  | 扫描引擎手电状态  |
 | persist.sys.scan.de3  | 判断是否是DE3扫描头 0 不是 1 是，默认0  |
+| persist.sys.nlsgms  | 判断是否是进入GMS测试状态 0 不是 1 是，默认0  |
+| persist.sys.forceview  | 是否显示 0 不是 1 是，默认0  |
+| persist.sys.screendim  | 背光进入省电POLICY_DIM时间 DimTime  = 显示时间- POLICY_DIM等待时间 如果是0 按原有值进行|
