@@ -1,17 +1,17 @@
 ## KSet
 
-### kset½á¹¹Ìå
+### ksetç»“æž„ä½“
 
 ```c
 struct kset {
-	struct list_head list;         // kobject ÁÐ±í
+	struct list_head list;         // kobject åˆ—è¡¨
 	spinlock_t list_lock;
-	struct kobject kobj;           // ksetÄÚÇ¶kobject
-	const struct kset_uevent_ops *uevent_ops;  // kset ÊÂ¼þ
+	struct kobject kobj;           // ksetå†…åµŒkobject
+	const struct kset_uevent_ops *uevent_ops;  // kset äº‹ä»¶
 };
 ```
 
-### kset Ìí¼Óº¯Êý
+### kset æ·»åŠ å‡½æ•°
 ```c
 struct kset *kset_create_and_add(const char *name,
 				 const struct kset_uevent_ops *uevent_ops,
@@ -20,10 +20,10 @@ struct kset *kset_create_and_add(const char *name,
 	struct kset *kset;
 	int error;
 
-	kset = kset_create(name, uevent_ops, parent_kobj); // ³õÊ¼»¯ÄÚÇ¶kobject£¬ÉêÇëkset
+	kset = kset_create(name, uevent_ops, parent_kobj); // åˆå§‹åŒ–å†…åµŒkobjectï¼Œç”³è¯·kset
 	if (!kset)
 		return NULL;
-	error = kset_register(kset);   // ×¢²áº¯Êý
+	error = kset_register(kset);   // æ³¨å†Œå‡½æ•°
 	if (error) {
 		kfree(kset);
 		return NULL;
@@ -55,7 +55,7 @@ static struct kset *kset_create(const char *name,
 	 * no kset itself.  That way we can properly free it when it is
 	 * finished being used.
 	 */
-	kset->kobj.ktype = &kset_ktype; \\ktypeÉèÖÃÎªkset_ktype
+	kset->kobj.ktype = &kset_ktype; \\ktypeè®¾ç½®ä¸ºkset_ktype
 	kset->kobj.kset = NULL;
 
 	return kset;
@@ -70,8 +70,8 @@ int kset_register(struct kset *k)
 	if (!k)
 		return -EINVAL;
 
-	kset_init(k);                          // Êµ¼Ê³õÊ¼»¯ksetÄÚÇ¶kobject
-	err = kobject_add_internal(&k->kobj);  // ´´½¨sysfsÎÄ¼þ
+	kset_init(k);                          // å®žé™…åˆå§‹åŒ–ksetå†…åµŒkobject
+	err = kobject_add_internal(&k->kobj);  // åˆ›å»ºsysfsæ–‡ä»¶
 	if (err)
 		return err;
 	kobject_uevent(&k->kobj, KOBJ_ADD);

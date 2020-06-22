@@ -4,16 +4,24 @@
 
 ## 一、编译命令
 
-> ** 1、make O=输出目录**
-> ** 2、make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi- smdkv210_defconfig
+> * make O=输出目录
+> * export PATH=/home/nltxl/home4/nltxl/linux/opt/5.5.0/bin:$PATH
+>* make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi- tiny210_defconfig
+> * make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi-
+
+arm-linux-gnueabihf-
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- tiny210_defconfig
+
+
 
 
 ## 二、修改步骤
 
-### 1、arch/arm/Kconfig添加ARCH_S5PV2XX
+### 1、arch/arm/Kconfig添加ARCH_S5PV210
 
 ```c
-config ARCH_S5PV2XX
+10onfig ARCH_S5PV210
        bool "Samsung S5PV2XX"
        select CPU_V7
        select DM
@@ -27,7 +35,7 @@ source "arch/arm/mach-s5pv2xx/Kconfig"
 ### 2、arch/arm/Makefile添加mach-s5pv2xx
 
 ```c
-machine-$(CONFIG_ARCH_S5PV2XX)  += s5pv2xx
+machine-$(CONFIG_ARCH_S5PV210)  += s5pv2xx
 ```
 
 ### 3、添加arch/arm/mach-s5pv2xx, 参考s5pc110_gpio_pin
@@ -183,49 +191,56 @@ unsigned long get_arm_clk(void)
 
 ...
 
-#ifdef CONFIG_SPL_BUILD
 void s5pv210_clock_init(void)
 {
-    u32 val = 0;
+	u32 val = 0;
 
-    struct s5pv210_clock *const clock = (struct s5pv210_clock *)samsung_get_base_clock();
+	struct s5pv210_clock *const clock = (struct s5pv210_clock *)samsung_get_base_clock();
 
-    writel(0xFFFF, &clock->apll_lock);
-    writel(0xFFFF, &clock->mpll_lock);
-    writel(0xFFFF, &clock->epll_lock);
-    writel(0xFFFF, &clock->vpll_lock);
+	/* 1.设置PLL锁定值 */
+	writel(0xFFFF, &clock->apll_lock);
+	writel(0xFFFF, &clock->mpll_lock);
+	writel(0xFFFF, &clock->epll_lock);
+	writel(0xFFFF, &clock->vpll_lock);
 
-    writel((3  << 8) | (125 << 16) | (1 << 0) | (1 << 31), &clock->apll_con0);      /* FOUT_APLL = 1000MHz */
-    writel((12 << 8) | (667 << 16) | (1 << 0) | (1 << 31), &clock->mpll_con);       /* FOUT_MPLL = 667MHz */
-    writel((3  << 8) | (48  << 16) | (2 << 0) | (1 << 31), &clock->epll_con0);      /* FOUT_EPLL = 96MHz */
-    writel((6  << 8) | (108 << 16) | (3 << 0) | (1 << 31), &clock->vpll_con);       /* FOUT_VPLL = 54MHz */
+	/* 2.设置PLL的PMS值(使用芯片手册推荐的值)，并使能PLL */
+	/*	 	P	  	    M   		  S		     EN	*/
+	writel((3  << 8) | (125 << 16) | (1 << 0) | (1 << 31), &clock->apll_con0);	/* FOUT_APLL = 1000MHz */
+	writel((12 << 8) | (667 << 16) | (1 << 0) | (1 << 31), &clock->mpll_con); 	/* FOUT_MPLL = 667MHz */
+	writel((3  << 8) | (48  << 16) | (2 << 0) | (1 << 31), &clock->epll_con0);	/* FOUT_EPLL = 96MHz */
+	writel((6  << 8) | (108 << 16) | (3 << 0) | (1 << 31), &clock->vpll_con);	/* FOUT_VPLL = 54MHz */
 
-    while (!(readl(&clock->apll_con0) & (1 << 29)));
-    while (!(readl(&clock->mpll_con) & (1 << 29)));
-    while (!(readl(&clock->apll_con0) & (1 << 29)));
-    while (!(readl(&clock->epll_con0) & (1 << 29)));
-    while (!(readl(&clock->vpll_con) & (1 << 29)));
+	/* 3.等待PLL锁定 */
+	while (!(readl(&clock->apll_con0) & (1 << 29)));
+	while (!(readl(&clock->mpll_con) & (1 << 29)));
+	while (!(readl(&clock->apll_con0) & (1 << 29)));
+	while (!(readl(&clock->epll_con0) & (1 << 29)));
+	while (!(readl(&clock->vpll_con) & (1 << 29)));
 
-    /* MOUT_MSYS = SCLKAPLL = FOUT_APLL = 1000MHz
-    ** MOUT_DSYS = SCLKMPLL = FOUT_MPLL = 667MHz
-    ** MOUT_PSYS = SCLKMPLL = FOUT_MPLL = 667MHz
-    ** ONENAND = HCLK_PSYS
-    */
+	/*
+	** 4.设置系统时钟源，选择PLL为时钟输出 */
+	/* MOUT_MSYS = SCLKAPLL = FOUT_APLL = 1000MHz
+	** MOUT_DSYS = SCLKMPLL = FOUT_MPLL = 667MHz
+	** MOUT_PSYS = SCLKMPLL = FOUT_MPLL = 667MHz
+	** ONENAND = HCLK_PSYS
+	*/
+	writel((1 << 0) | (1 << 4) | (1 << 8) | (1 << 12), &clock->src0);
 
-    writel((1 << 0) | (1 << 4) | (1 << 8) | (1 << 12), &clock->clk_src0);
+	/* 4.设置其他模块的时钟源 */
 
-    val =   (0 << 0)  |     /* APLL_RATIO = 0, freq(ARMCLK) = MOUT_MSYS / (APLL_RATIO + 1) = 1000MHz */
-            (4 << 4)  |     /* A2M_RATIO = 4, freq(A2M) = SCLKAPLL / (A2M_RATIO + 1) = 200MHz */
-            (4 << 8)  |     /* HCLK_MSYS_RATIO = 4, freq(HCLK_MSYS) = ARMCLK / (HCLK_MSYS_RATIO + 1) = 200MHz */
-            (1 << 12) |     /* PCLK_MSYS_RATIO = 1, freq(PCLK_MSYS) = HCLK_MSYS / (PCLK_MSYS_RATIO + 1) = 100MHz */
-            (3 << 16) |     /* HCLK_DSYS_RATIO = 3, freq(HCLK_DSYS) = MOUT_DSYS / (HCLK_DSYS_RATIO + 1) = 166MHz */
-            (1 << 20) |     /* PCLK_DSYS_RATIO = 1, freq(PCLK_DSYS) = HCLK_DSYS / (PCLK_DSYS_RATIO + 1) = 83MHz */
-            (4 << 24) |     /* HCLK_PSYS_RATIO = 4, freq(HCLK_PSYS) = MOUT_PSYS / (HCLK_PSYS_RATIO + 1) = 133MHz */
-            (1 << 28);      /* PCLK_PSYS_RATIO = 1, freq(PCLK_PSYS) = HCLK_PSYS / (PCLK_PSYS_RATIO + 1) = 66MHz */
-    writel(val, &clock->clk_div0);
+	/* 6.设置系统时钟分频值 */
+	val = 	(0 << 0)  |	/* APLL_RATIO = 0, freq(ARMCLK) = MOUT_MSYS / (APLL_RATIO + 1) = 1000MHz */
+			(4 << 4)  |	/* A2M_RATIO = 4, freq(A2M) = SCLKAPLL / (A2M_RATIO + 1) = 200MHz */
+			(4 << 8)  |	/* HCLK_MSYS_RATIO = 4, freq(HCLK_MSYS) = ARMCLK / (HCLK_MSYS_RATIO + 1) = 200MHz */
+			(1 << 12) |	/* PCLK_MSYS_RATIO = 1, freq(PCLK_MSYS) = HCLK_MSYS / (PCLK_MSYS_RATIO + 1) = 100MHz */
+			(3 << 16) | /* HCLK_DSYS_RATIO = 3, freq(HCLK_DSYS) = MOUT_DSYS / (HCLK_DSYS_RATIO + 1) = 166MHz */
+			(1 << 20) | /* PCLK_DSYS_RATIO = 1, freq(PCLK_DSYS) = HCLK_DSYS / (PCLK_DSYS_RATIO + 1) = 83MHz */
+			(4 << 24) |	/* HCLK_PSYS_RATIO = 4, freq(HCLK_PSYS) = MOUT_PSYS / (HCLK_PSYS_RATIO + 1) = 133MHz */
+			(1 << 28);	/* PCLK_PSYS_RATIO = 1, freq(PCLK_PSYS) = HCLK_PSYS / (PCLK_PSYS_RATIO + 1) = 66MHz */
+	writel(val, &clock->div0);
+
+	/* 7.设置其他模块的时钟分频值 */
 }
-#endif
-
 ```
 
 > **arch\arm\mach-s5pv2xx\include\mach\power.h**
@@ -318,21 +333,48 @@ static const struct gpio_name_num_table s5pv210_gpio_table[] = {
 #define S5PV210_USB_PHY_CONTROL 0xE010E80C
 
 ...
-
+#if 0
 static inline void s5p_set_cpu_id(void)
 {
 	s5p_cpu_id = readl(S5PV210_PRO_ID);
 	s5p_cpu_rev = s5p_cpu_id & 0x000000FF;
 	s5p_cpu_id = 0xC000 | ((s5p_cpu_id & 0x00FFF000) >> 12);
 }
-
+#else
+static inline void s5p_set_cpu_id(void)  
+{  
+        int id = 0;  
+        s5p_cpu_id = readl(S5PV210_PRO_ID);  
+        s5p_cpu_rev = s5p_cpu_id & 0x000000FF;  
+        id = (s5p_cpu_id & 0xFFFFF000) >> 12;  
+        if (id == 0x43110) {
+			id = s5p_cpu_id & 0x0F;
+			switch (id){
+				case 0x00:
+					s5p_cpu_id = 0x56210;
+					break;  
+  
+                case 0x01:
+					s5p_cpu_id = 0xc110;  
+               		break;  
+ 
+                case 0x02:
+					s5p_cpu_id = 0xc111;
+					break;  
+ 
+                default :
+					break;
+						}
+			}  
+}
+#endif
 ...
 
 IS_SAMSUNG_TYPE(s5pc100, 0xc100)
 IS_SAMSUNG_TYPE(s5pc110, 0xc110)
 IS_SAMSUNG_TYPE(s5pv210, 0xc000)
 
-#ifdef CONFIG_ARCH_S5PV2XX
+#ifdef CONFIG_ARCH_S5PV210
 #define SAMSUNG_BASE(device, base)				\
 static inline unsigned int samsung_get_base_##device(void)	\
 {								\
@@ -361,7 +403,7 @@ SAMSUNG_BASE(sromc, SROMC_BASE)
 SAMSUNG_BASE(timer, PWMTIMER_BASE)
 SAMSUNG_BASE(uart, UART_BASE)
 SAMSUNG_BASE(watchdog, WATCHDOG_BASE)
-#ifdef CONFIG_ARCH_S5PV2XX
+#ifdef CONFIG_ARCH_S5PV210
 SAMSUNG_BASE(dmc0,DMC0_BASE)
 SAMSUNG_BASE(dmc1,DMC1_BASE)
 #endif
@@ -372,22 +414,120 @@ SAMSUNG_BASE(dmc1,DMC1_BASE)
 
 ```c
 struct s5pv210_clock {
-    unsigned int    apll_lock;
-    unsigned char   res1[0x04];
-    ···
+	unsigned int	apll_lock;
+	unsigned char	res1[0x04];
+	unsigned int	mpll_lock;
+	unsigned char	res2[0x04];
+	unsigned int	epll_lock;
+	unsigned char	res3[0x0C];
+	unsigned int	vpll_lock;
+	unsigned char	res4[0xdc];
+	unsigned int	apll_con0;
+	unsigned int	apll_con1;
+	unsigned int	mpll_con;
+	unsigned char	res5[0x04];
+	unsigned int	epll_con0;
+	unsigned int	epll_con1;
+	unsigned char	res6[0x08];
+	unsigned int	vpll_con;
+	unsigned char	res7[0xdc];
+	unsigned int	src0;
+	unsigned int	src1;
+	unsigned int	src2;
+	unsigned int	src3;
+	unsigned int	src4;
+	unsigned int	src5;
+	unsigned int	src6;
+	unsigned char	res8[0x64];
+	unsigned int	mask0;
+	unsigned int	mask1;
+	unsigned char	res9[0x78];
+	unsigned int	div0;
+	unsigned int	div1;
+	unsigned int	div2;
+	unsigned int	div3;
+	unsigned int	div4;
+	unsigned int	div5;
+	unsigned int	div6;
+	unsigned int	div7;
 };
 ```
+> **添加dmc.h**
+
+```c
+#ifndef __ASM_ARM_ARCH_DRAM_H_
+#define __ASM_ARM_ARCH_DRAM_H_
+ 
+#ifndef __ASSEMBLY__
+ 
+struct s5pv210_dmc0 {
+        unsigned int    concontrol;
+        unsigned int    memcontrol;
+        unsigned int    memconfig0;
+        unsigned int    memconfig1;
+        unsigned int    directcmd;
+        unsigned int    prechconfig;
+        unsigned int    phycontrol0;
+        unsigned int    phycontrol1;
+        unsigned char   res1[0x08];
+        unsigned int    pwrdnconfig;
+        unsigned char   res2[0x04];
+        unsigned int    timingaref;
+        unsigned int    timingrow;
+        unsigned int    timingdata;
+        unsigned int    timingpower;
+        unsigned int    phystatus;
+        unsigned int    chip0status;
+        unsigned int    chip1status;
+        unsigned int    arefstatus;
+        unsigned int    mrstatus;
+        unsigned int    phytest0;
+        unsigned int    phytest1;
+};
+ 
+struct s5pv210_dmc1 {
+        unsigned int    concontrol;                                               
+		unsigned int    memcontrol;
+        unsigned int    memconfig0;
+        unsigned int    memconfig1;
+        unsigned int    directcmd;
+        unsigned int    prechconfig;
+        unsigned int    phycontrol0;
+        unsigned int    phycontrol1;
+        unsigned char   res1[0x08];
+        unsigned int    pwrdnconfig;
+        unsigned char   res2[0x04];
+        unsigned int    timingaref;
+        unsigned int    timingrow;
+        unsigned int    timingdata;
+        unsigned int    timingpower;
+        unsigned int    phystatus;
+        unsigned int    chip0status;
+        unsigned int    chip1status;
+        unsigned int    arefstatus;
+        unsigned int    mrstatus;
+        unsigned int    phytest0;
+        unsigned int    phytest1;
+};
+#endif
+#endif
+```
+
+
+
+
+
 > **arch\arm\mach-s5pv2xx\Kconfig**
 
 ```c
-if ARCH_S5PV2XX
+if ARCH_S5PV210
 
 choice
-	prompt "S5PV2XX board select"
+	prompt "S5PV210 board select"
 	optional
 
-config TARGET_SMDKV210
-	bool "Support smdkv210 board"
+config TARGET_TINY210
+	bool "Support tiny210 board"
 	select OF_CONTROL
 	select SUPPORT_SPL
 	select SPL
@@ -397,13 +537,13 @@ endchoice
 config SYS_SOC
 	default "s5pv2xx"
 
-source "board/samsung/smdkv210/Kconfig"
+source "board/samsung/tiny210/Kconfig"
 
 endif
 ```
 ### 4、修改arch/arm/cpu/armv7/Makefile 添加s5pv2xx
 
-```c
+```makefile
 ifneq (,$(filter s5pc1xx s5pv2xx exynos,$(SOC)))
 ```
 ### 5、修改arch/arm/cpu/armv7/s5p-common/cpu_info.c
@@ -415,10 +555,10 @@ unsigned int s5p_cpu_id = 0xC000;
 ### 6、修改arch/arm/dts/Makefile
 
 ```c
-dtb-$(CONFIG_S5PV210) += s5pv2xx-smdkv210.dtb
+dtb-$(CONFIG_S5PV210) += s5pv2xx-tiny210.dtb
 ```
 
-### 7、添加arch/arm/dts/s5pv2xx-smdkv210.dts
+### 7、添加arch/arm/dts/s5pv2xx-tiny210.dts
 
 ```c
 /*
@@ -436,7 +576,7 @@ dtb-$(CONFIG_S5PV210) += s5pv2xx-smdkv210.dtb
 
 / {
 	model = "Samsung SMDKV210 based on S5PV210";
-	compatible = "samsung,smdkv210", "samsung,s5pv210";
+	compatible = "samsung,tiny210", "samsung,s5pv210";
 
 	aliases {
 		serial0 = "/serial@ec000000";
@@ -475,7 +615,7 @@ config SPL_S5PV_SUPPORT
 
 ### 9、修改common/spl/Makefile
 
-```c
+```makefile
 obj-$(CONFIG_SPL_S5PV_SUPPORT) += spl_s5p.o
 ```
 
@@ -563,13 +703,13 @@ SPL_LOAD_IMAGE_METHOD("S5PV", 0, BOOT_DEVICE_S5PV, spl_s5pv_load_image);
  };
 
 ```
-### 12、添加board\samsung\smdkv210\Kconfig
+### 12、添加board\samsung\tiny210\Kconfig
 
-```c
-if TARGET_SMDKV210
+```makefile
+if TARGET_TINY210
 
 config SYS_BOARD
-	default "smdkv210"
+	default "tiny210"
 
 config SYS_VENDOR
 	default "samsung"
@@ -578,11 +718,11 @@ config SYS_SOC
 	default "s5pv2xx"
 
 config SYS_CONFIG_NAME
-	default "smdkv210"
+	default "tiny210"
 
 endif
 ```
-### 13、添加board\samsung\smdkv210\Makefile
+### 13、添加board\samsung\tiny210\Makefile
 
 ```c
 #
@@ -599,18 +739,17 @@ ifdef CONFIG_SPL_BUILD
 # necessary to create built-in.o
 obj- := __dummy__.o
 
-hostprogs-y := tools/mksmdkv210spl
+hostprogs-y := tools/mktiny210spl
 always := $(hostprogs-y)
 endif
 
-obj-y	:= smdkv210.o
-obj-$(CONFIG_SAMSUNG_ONENAND)	+= onenand.o
+obj-y	:= tiny210.o
 obj-y	+= lowlevel_init.o
 
-obj-$(CONFIG_SPL_BUILD) += smdv210-spl.o
+obj-$(CONFIG_SPL_BUILD) += tiny210-spl.o
 ```
 
-### 14、修改board\samsung\smdkc100\lowlevel_init.S
+### 14、修改board\samsung\tiny210\lowlevel_init.S
 
 ```c
 /*
@@ -733,7 +872,7 @@ tzpc_asm_init:
 	mov	pc, lr
 ```
 
-### 15、board\samsung\smdkv210\smdkv210.c 参考smdkc100.c
+### 15、board\samsung\tiny210\tiny210.c 参考smdkc100.c
 
 ```c
 #ifdef CONFIG_SPL_BUILD
@@ -1003,4 +1142,526 @@ __weak struct serial_device *default_serial_console(void)
 #endif
 }
 #endif
+```
+
+
+
+## 18.添加SPL工具 tools/mktiny210spl.c
+
+```c
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define BUFSIZE                 (8*1024)
+#define IMG_SIZE                (8*1024)
+#define SPL_HEADER_SIZE         16
+//#define FILE_PERM               (S_IRUSR | S_IWUSR | S_IRGRP \
+                                | S_IWGRP | S_IROTH | S_IWOTH)
+#define SPL_HEADER              "S5PC110 HEADER  "
+
+int main (int argc, char *argv[])
+{
+	FILE		*fp;
+	char		*Buf, *a;
+	int		BufLen;
+	int		nbytes, fileLen;
+	unsigned int	checksum, count;
+	int		i;
+
+//////////////////////////////////////////////////////////////
+	if (argc != 3)
+	{
+		printf("Usage: mkbl1 <source file> <destination file>\n");
+		return -1;
+	}
+
+//////////////////////////////////////////////////////////////
+	BufLen = BUFSIZE;
+	Buf = (char *)malloc(BufLen);
+	if (!Buf)
+	{
+		printf("Alloc buffer failed!\n");
+		return -1;
+	}
+
+	memset(Buf, 0x00, BufLen);
+
+//////////////////////////////////////////////////////////////
+	fp = fopen(argv[1], "rb");
+	if( fp == NULL)
+	{
+		printf("source file open error\n");
+		free(Buf);
+		return -1;
+	}
+
+	fseek(fp, 0L, SEEK_END);
+	fileLen = ftell(fp);
+	fseek(fp, 0L, SEEK_SET);
+#if 0
+	if ( BufLen > fileLen )
+	{
+		printf("Usage: unsupported size\n");
+		free(Buf);
+		fclose(fp);
+		return -1;
+	}
+#endif
+	count = (fileLen < (IMG_SIZE - SPL_HEADER_SIZE))
+		? fileLen : (IMG_SIZE - SPL_HEADER_SIZE);
+
+	memcpy(&Buf[0], SPL_HEADER, SPL_HEADER_SIZE);
+
+	nbytes = fread(Buf + SPL_HEADER_SIZE, 1, count, fp);
+
+	if ( nbytes != count )
+	{
+		printf("source file read error\n");
+		free(Buf);
+		fclose(fp);
+		return -1;
+	}
+
+	fclose(fp);
+
+//////////////////////////////////////////////////////////////
+	a = Buf + SPL_HEADER_SIZE;
+	for(i = 0, checksum = 0; i < IMG_SIZE - SPL_HEADER_SIZE; i++)
+		checksum += (0x000000FF) & *a++;
+
+	a = Buf + 8;
+	*( (unsigned int *)a ) = checksum;
+
+//////////////////////////////////////////////////////////////
+	fp = fopen(argv[2], "wb");
+	if (fp == NULL)
+	{
+		printf("destination file open error\n");
+		free(Buf);
+		return -1;
+	}
+
+	a	= Buf;
+	nbytes	= fwrite( a, 1, BufLen, fp);
+
+	if ( nbytes != BufLen )
+	{
+		printf("destination file write error\n");
+		free(Buf);
+		fclose(fp);
+		return -1;
+	}
+
+	free(Buf);
+	fclose(fp);
+
+	return 0;
+}
+```
+
+
+
+## 19.添加tiny210.h
+
+```c
+#ifndef __CONFIG_H
+#define __CONFIG_H
+
+/* High Level Configuration Options */
+#define CONFIG_SAMSUNG			1	/* SAMSUNG core*/
+#define CONFIG_S5P				1	/* S5P Family */
+#define CONFIG_S5PV210			1	/* which is in a S5PV210 SoC */
+
+#include <asm/arch/cpu.h>		/* get chip and board defs */
+
+/* Enable DEBUG for get more information from uart */
+#define DEBUG	/* it will print the log that debug() to uart */
+
+#define CONFIG_ARCH_CPU_INIT
+
+#define CONFIG_MCP_SINGLE		1
+#define CONFIG_EVT1				1		/* EVT1 */
+
+
+
+#define BOOT_ONENAND		0x1
+#define BOOT_NAND		0x2
+#define BOOT_MMCSD		0x3
+#define BOOT_NOR		0x4
+#define BOOT_SEC_DEV		0x5
+
+/* Keep L2 Cache Disabled */
+#define CONFIG_SYS_DCACHE_OFF           1
+
+#define CONFIG_SYS_SDRAM_BASE           0x20000000
+#define CONFIG_SYS_TEXT_BASE            0x23E00000
+
+#define MEMORY_BASE_ADDRESS	CONFIG_SYS_SDRAM_BASE
+
+/* input clock of PLL: MINI210 has 24MHz input clock */
+#define CONFIG_SYS_CLK_FREQ		24000000
+
+#ifndef CONFIG_SYS_DCACHE_OFF
+#define CONFIG_ENABLE_MMU
+#endif
+
+#undef CONFIG_USE_IRQ				/* we don't need IRQ/FIQ stuff */
+
+
+#define CONFIG_SETUP_MEMORY_TAGS
+#define CONFIG_CMDLINE_TAG
+#define CONFIG_INITRD_TAG
+#define CONFIG_CMDLINE_EDITING
+
+/* MACH_TYPE_MINI210 macro will be removed once added to mach-types */
+#define CONFIG_MACH_TYPE		MACH_TYPE_TINY210
+
+/* Size of malloc() pool */
+#define CONFIG_SYS_MALLOC_LEN			(CONFIG_ENV_SIZE + 896*1024)
+
+/* select serial console configuration */
+#define CONFIG_SERIAL_MULTI				1
+#define CONFIG_SERIAL0					1	/* use SERIAL 0 */
+#define CONFIG_BAUDRATE					115200
+#define S5PC210_DEFAULT_UART_OFFSET		0x020000
+
+/* SD/MMC configuration */
+#define CONFIG_GENERIC_MMC		1
+#define CONFIG_MMC			1
+#define CONFIG_S5P_SDHCI		1
+
+/* PWM */
+#define CONFIG_PWM			1
+
+/* allow to overwrite serial and ethaddr */
+#define CONFIG_ENV_OVERWRITE
+
+/* Command definition*/
+/* #include <config_cmd_default.h> */
+
+
+#define CONFIG_CMD_PING
+#define CONFIG_CMD_ELF
+#define CONFIG_CMD_DHCP
+#define CONFIG_CMD_MMC
+#define CONFIG_CMD_FAT
+#if 0
+//#undef CONFIG_CMD_NET
+//#undef CONFIG_CMD_NFS
+#endif
+
+/* Miscellaneous configurable options */
+#define CONFIG_SYS_LONGHELP             /* undef to save memory */
+#define CONFIG_SYS_PROMPT_HUSH_PS2      "> "
+/*
+ * #define CONFIG_SYS_PROMPT              "[FriendlyLEG-TINY210]# "
+ */
+#define CONFIG_SYS_CBSIZE               256     /* Console I/O Buffer Size*/
+#define CONFIG_SYS_PBSIZE               384     /* Print Buffer Size */
+#define CONFIG_SYS_MAXARGS              64      /* max number of command args */
+/* Boot Argument Buffer Size */
+#define CONFIG_SYS_BARGSIZE				CONFIG_SYS_CBSIZE
+/* memtest works on */
+#define CONFIG_SYS_MEMTEST_START	MEMORY_BASE_ADDRESS
+#define CONFIG_SYS_MEMTEST_END		(MEMORY_BASE_ADDRESS + 0x3E00000)		/* 256 MB in DRAM	*/
+#define CONFIG_SYS_LOAD_ADDR		(PHYS_SDRAM_1 + 0x1000000)	/* default load address	*/
+
+/* the PWM TImer 4 uses a counter of 41687 for 10 ms, so we need */
+/* it to wrap 100 times (total 4168750) to get 1 sec. */
+/*
+#define CONFIG_SYS_HZ			1000		// at PCLK 66MHz
+*/
+
+/* valid baudrates */
+#define CONFIG_SYS_BAUDRATE_TABLE	{ 9600, 19200, 38400, 57600, 115200 }
+
+/* Stack sizes */
+#define CONFIG_STACKSIZE	0x40000		/* regular stack 256KB */
+
+#ifdef CONFIG_USE_IRQ
+#define CONFIG_STACKSIZE_IRQ	(4*1024)	/* IRQ stack */
+#define CONFIG_STACKSIZE_FIQ	(4*1024)	/* FIQ stack */
+#endif
+
+#define CONFIG_SPL_STACK		0xD0037FFF
+#define CONFIG_SYS_INIT_SP_ADDR (CONFIG_SYS_LOAD_ADDR - GENERATED_GBL_DATA_SIZE)
+
+/* MINI210 has 4 bank of DRAM */
+#define CONFIG_NR_DRAM_BANKS	1
+#define SDRAM_BANK_SIZE		0x20000000	/* 512 MB */
+#define PHYS_SDRAM_1		MEMORY_BASE_ADDRESS
+#define PHYS_SDRAM_1_SIZE	SDRAM_BANK_SIZE
+
+/* FLASH and environment organization */
+#define CONFIG_SYS_NO_FLASH		1
+#undef CONFIG_CMD_IMLS
+
+#define CONFIG_ENV_IS_IN_MMC		1
+#define CONFIG_SYS_MMC_ENV_DEV		0
+#define CONFIG_ENV_SIZE				0x4000	/* 16KB */
+#define RESERVE_BLOCK_SIZE              (512)
+#define BL1_SIZE                        (8 << 10) /*8 K reserved for BL1*/
+#define CONFIG_ENV_OFFSET               (RESERVE_BLOCK_SIZE + BL1_SIZE + ((16 + 512) * 1024))
+#define CONFIG_DOS_PARTITION		1
+
+#if 0
+//#define CONFIG_CLK_667_166_166_133
+//#define CONFIG_CLK_533_133_100_100
+//#define CONFIG_CLK_800_200_166_133
+//#define CONFIG_CLK_800_100_166_133
+#endif
+#define CONFIG_CLK_1000_200_166_133
+#if 0
+//#define CONFIG_CLK_400_200_166_133
+//#define CONFIG_CLK_400_100_166_133
+#endif
+
+#if defined(CONFIG_CLK_667_166_166_133)
+#define APLL_MDIV       0xfa
+#define APLL_PDIV       0x6
+#define APLL_SDIV       0x1
+#elif defined(CONFIG_CLK_533_133_100_100)
+#define APLL_MDIV       0x215
+#define APLL_PDIV       0x18
+#define APLL_SDIV       0x1
+#elif defined(CONFIG_CLK_800_200_166_133) || \
+	defined(CONFIG_CLK_800_100_166_133) || \
+	defined(CONFIG_CLK_400_200_166_133) || \
+	defined(CONFIG_CLK_400_100_166_133)
+#define APLL_MDIV       0x64
+#define APLL_PDIV       0x3
+#define APLL_SDIV       0x1
+#elif defined(CONFIG_CLK_1000_200_166_133)
+#define APLL_MDIV       0x7d
+#define APLL_PDIV       0x3
+#define APLL_SDIV       0x1
+#endif
+
+#define APLL_LOCKTIME_VAL	0x2cf
+
+#if defined(CONFIG_EVT1)
+/* Set AFC value */
+#define AFC_ON		0x00000000
+#define AFC_OFF		0x10000010
+#endif
+
+#if defined(CONFIG_CLK_533_133_100_100)
+#define MPLL_MDIV	0x190
+#define MPLL_PDIV	0x6
+#define MPLL_SDIV	0x2
+#else
+#define MPLL_MDIV	0x29b
+#define MPLL_PDIV	0xc
+#define MPLL_SDIV	0x1
+#endif
+
+#define EPLL_MDIV	0x60
+#define EPLL_PDIV	0x6
+#define EPLL_SDIV	0x2
+
+#define VPLL_MDIV	0x6c
+#define VPLL_PDIV	0x6
+#define VPLL_SDIV	0x3
+
+/* CLK_DIV0 */
+#define APLL_RATIO	0
+#define A2M_RATIO	4
+#define HCLK_MSYS_RATIO	8
+#define PCLK_MSYS_RATIO	12
+#define HCLK_DSYS_RATIO	16
+#define PCLK_DSYS_RATIO 20
+#define HCLK_PSYS_RATIO	24
+#define PCLK_PSYS_RATIO 28
+
+#define CLK_DIV0_MASK	0x7fffffff
+
+#define set_pll(mdiv, pdiv, sdiv)	(1<<31 | mdiv<<16 | pdiv<<8 | sdiv)
+
+#define APLL_VAL	set_pll(APLL_MDIV,APLL_PDIV,APLL_SDIV)
+#define MPLL_VAL	set_pll(MPLL_MDIV,MPLL_PDIV,MPLL_SDIV)
+#define EPLL_VAL	set_pll(EPLL_MDIV,EPLL_PDIV,EPLL_SDIV)
+#define VPLL_VAL	set_pll(VPLL_MDIV,VPLL_PDIV,VPLL_SDIV)
+
+#if defined(CONFIG_CLK_667_166_166_133)
+#define CLK_DIV0_VAL    ((0<<APLL_RATIO)|(3<<A2M_RATIO)|(3<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_533_133_100_100)
+#define CLK_DIV0_VAL    ((0<<APLL_RATIO)|(3<<A2M_RATIO)|(3<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(3<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_800_200_166_133)
+#define CLK_DIV0_VAL    ((0<<APLL_RATIO)|(3<<A2M_RATIO)|(3<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_800_100_166_133)
+#define CLK_DIV0_VAL    ((0<<APLL_RATIO)|(7<<A2M_RATIO)|(7<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_400_200_166_133)
+#define CLK_DIV0_VAL    ((1<<APLL_RATIO)|(3<<A2M_RATIO)|(1<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_400_100_166_133)
+#define CLK_DIV0_VAL    ((1<<APLL_RATIO)|(7<<A2M_RATIO)|(3<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#elif defined(CONFIG_CLK_1000_200_166_133)
+#define CLK_DIV0_VAL    ((0<<APLL_RATIO)|(4<<A2M_RATIO)|(4<<HCLK_MSYS_RATIO)|(1<<PCLK_MSYS_RATIO)\
+			|(3<<HCLK_DSYS_RATIO)|(1<<PCLK_DSYS_RATIO)|(4<<HCLK_PSYS_RATIO)|(1<<PCLK_PSYS_RATIO))
+#endif
+
+#define CLK_DIV1_VAL	((1<<16)|(1<<12)|(1<<8)|(1<<4))
+#define CLK_DIV2_VAL	(1<<0)
+
+#if defined(CONFIG_CLK_533_133_100_100)
+
+#if defined(CONFIG_MCP_SINGLE)
+
+#define DMC0_TIMINGA_REF	0x40e
+#define DMC0_TIMING_ROW		0x10233206
+#define DMC0_TIMING_DATA	0x12130005
+#define	DMC0_TIMING_PWR		0x0E100222
+
+#define DMC1_TIMINGA_REF	0x40e
+#define DMC1_TIMING_ROW		0x10233206
+#define DMC1_TIMING_DATA	0x12130005
+#define	DMC1_TIMING_PWR		0x0E100222
+
+#else
+
+#error "You should define memory type (AC type or H type or B type)"
+
+#endif
+
+#elif defined(CONFIG_CLK_800_200_166_133) || \
+	defined(CONFIG_CLK_1000_200_166_133) || \
+	defined(CONFIG_CLK_800_100_166_133) || \
+	defined(CONFIG_CLK_400_200_166_133) || \
+	defined(CONFIG_CLK_400_100_166_133)
+
+#if defined(CONFIG_MCP_SINGLE)
+
+#define DMC0_MEMCONTROL		0x00202400	// MemControl	BL=4, 1Chip, DDR2 Type, dynamic self refresh, force precharge, dynamic power down off
+#define DMC0_MEMCONFIG_0	0x20E00323	// MemConfig0	256MB config, 8 banks,Mapping Method[12:15]0:linear, 1:linterleaved, 2:Mixed
+#define DMC0_MEMCONFIG_1	0x00E00323	// MemConfig1
+#if 0
+#define DMC0_TIMINGA_REF	0x00000618	// TimingAref	7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4E)
+#define DMC0_TIMING_ROW		0x28233287	// TimingRow	for @200MHz
+#define DMC0_TIMING_DATA	0x23240304	// TimingData	CL=3
+#define	DMC0_TIMING_PWR		0x09C80232	// TimingPower
+#else
+#define DMC0_TIMINGA_REF        0x00000618      // TimingAref   7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4E)
+#define DMC0_TIMING_ROW         0x2B34438A      // TimingRow    for @200MHz
+#define DMC0_TIMING_DATA        0x24240000      // TimingData   CL=3
+#define DMC0_TIMING_PWR         0x0BDC0343      // TimingPower
+#endif
+
+#define	DMC1_MEMCONTROL		0x00202400	// MemControl	BL=4, 2 chip, DDR2 type, dynamic self refresh, force precharge, dynamic power down off
+#define DMC1_MEMCONFIG_0	0x40F00313	// MemConfig0	512MB config, 8 banks,Mapping Method[12:15]0:linear, 1:linterleaved, 2:Mixed
+#define DMC1_MEMCONFIG_1	0x00F00313	// MemConfig1
+#if 0
+#define DMC1_TIMINGA_REF	0x00000618	// TimingAref	7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4
+#define DMC1_TIMING_ROW		0x28233289	// TimingRow	for @200MHz
+#define DMC1_TIMING_DATA	0x23240304	// TimingData	CL=3
+#define	DMC1_TIMING_PWR		0x08280232	// TimingPower
+#else
+#define DMC1_TIMINGA_REF        0x00000618      // TimingAref   7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4E)
+#define DMC1_TIMING_ROW         0x2B34438A      // TimingRow    for @200MHz
+#define DMC1_TIMING_DATA        0x24240000      // TimingData   CL=3
+#define DMC1_TIMING_PWR         0x0BDC0343      // TimingPower
+#endif
+#if defined(CONFIG_CLK_800_100_166_133) || defined(CONFIG_CLK_400_100_166_133)
+#define DMC0_MEMCONFIG_0	0x20E01323	// MemConfig0	256MB config, 8 banks,Mapping Method[12:15]0:linear, 1:linterleaved, 2:Mixed
+#define DMC0_MEMCONFIG_1	0x40F01323	// MemConfig1
+#define DMC0_TIMINGA_REF	0x0000030C	// TimingAref	7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4E)
+#define DMC0_TIMING_ROW		0x28233287	// TimingRow	for @200MHz
+#define DMC0_TIMING_DATA	0x23240304	// TimingData	CL=3
+#define	DMC0_TIMING_PWR		0x09C80232	// TimingPower
+
+#define	DMC1_MEMCONTROL		0x00202400	// MemControl	BL=4, 2 chip, DDR2 type, dynamic self refresh, force precharge, dynamic power down off
+#define DMC1_MEMCONFIG_0	0x40C01323	// MemConfig0	512MB config, 8 banks,Mapping Method[12:15]0:linear, 1:linterleaved, 2:Mixed
+#define DMC1_MEMCONFIG_1	0x00E01323	// MemConfig1
+#define DMC1_TIMINGA_REF	0x0000030C	// TimingAref	7.8us*133MHz=1038(0x40E), 100MHz=780(0x30C), 20MHz=156(0x9C), 10MHz=78(0x4
+#define DMC1_TIMING_ROW		0x28233289	// TimingRow	for @200MHz
+#define DMC1_TIMING_DATA	0x23240304	// TimingData	CL=3
+#define	DMC1_TIMING_PWR		0x08280232	// TimingPower
+#endif
+
+#else
+
+#error "You should define memory type (AC type or H type)"
+
+#endif
+
+#else
+
+#define DMC0_TIMINGA_REF	0x50e
+#define DMC0_TIMING_ROW		0x14233287
+#define DMC0_TIMING_DATA	0x12130005
+#define	DMC0_TIMING_PWR		0x0E140222
+
+#define DMC1_TIMINGA_REF	0x618
+#define DMC1_TIMING_ROW		0x11344309
+#define DMC1_TIMING_DATA	0x12130005
+#define	DMC1_TIMING_PWR		0x0E190222
+
+#endif
+
+
+#if defined(CONFIG_CLK_533_133_100_100)
+#define UART_UBRDIV_VAL		26
+#define UART_UDIVSLOT_VAL	0x0808
+#else
+#define UART_UBRDIV_VAL		34
+#define UART_UDIVSLOT_VAL	0xDDDD
+#endif
+
+/* MMC SPL */
+/*
+ * #define CONFIG_SPL
+ */
+
+/* Modified by lk for dm9000*/
+#define DM9000_16BIT_DATA
+#define CONFIG_CMD_NET
+#define CONFIG_DRIVER_DM9000       1
+#define CONFIG_NET_MULTI               1
+#define CONFIG_NET_RETRY_COUNT 1
+#define CONFIG_DM9000_NO_SROM 1
+#ifdef CONFIG_DRIVER_DM9000  
+#define CONFIG_DM9000_BASE		(0x88001000)
+#define DM9000_IO			(CONFIG_DM9000_BASE)
+#if defined(DM9000_16BIT_DATA)
+#define DM9000_DATA			(CONFIG_DM9000_BASE+0x300C)
+#else
+#define DM9000_DATA			(CONFIG_DM9000_BASE+1)
+#endif
+#endif
+/****************************/
+
+
+/***Modified by lk ***/
+#define CFG_PHY_UBOOT_BASE	MEMORY_BASE_ADDRESS + 0x3e00000
+#define CFG_PHY_KERNEL_BASE	MEMORY_BASE_ADDRESS + 0x8000
+
+
+
+/* For s5p_sdhci */
+#define SDHCI_MAX_HOSTS 4
+
+
+#endif	/* __CONFIG_H */
+```
+
+
+
+## 20.tiny210_defconfig
+
+```makefile
+CONFIG_ARM=y
+CONFIG_ARCH_S5PV210=y
+CONFIG_TARGET_TINY210=y
+CONFIG_IDENT_STRING=" for TINY210"
+CONFIG_DEFAULT_DEVICE_TREE="s5pv210-tiny210"
+CONFIG_BOOTDELAY=3
+CONFIG_HUSH_PARSER=y
+CONFIG_SYS_PROMPT="TINY210 # "
+CONFIG_CMD_CACHE=y
+CONFIG_CMD_FAT=y
 ```

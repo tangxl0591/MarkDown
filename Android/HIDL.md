@@ -22,9 +22,12 @@ touch vendor.mediatek.hardware.scancamera@2.0-service.rc
 touch sercive.cpp
 
 ./vendor/mediatek/proprietary/hardware/interfaces/update-makefiles.sh
+./device/nlscan/Common/overlay/hardware/interfaces/update-makefiles.sh
 
 生产hash加入current.txt
 hidl-gen -L hash -rvendor.mediatek.hardware:vendor/mediatek/proprietary/hardware/interfaces -randroid.hidl:system/libhidl/transport $PACKAGE
+    
+hidl-gen -L hash -rvendor.newland.hardware:device/nlscan/Common/overlay/hardware/interfaces -randroid.hidl:system/libhidl/transport  
 
 ```
 

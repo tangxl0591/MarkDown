@@ -575,6 +575,7 @@ int cam_ioctrl(void* camera, int cmd, int param1, void* param2);
 | CM48 | 0x12  | 0xF0/0x0A   | 1280   | 960    | 1588 | 997  | 52 |  85 | 1 |  RAW8  |
 | CM46 | 0x12  | 0xF0/0x08   | 752   | 480    | 846   | 525  | 54 |  85	| 1 |  YUV420  |
 | SE4750 | 0xB8  | 0x7A/0x82 | 1360  | 960    | 1388  | 997  | 54 |  45	| 1 |  RAW8  |
+| CM60 | 0x12  | 0xF0/0x0B   | 1280   | 800    | 1588 | 997  | 54 |  85 | 1/2 |  RAW8  |
 
 ## 九、CustLauncher.xml开机自运行功能
 > 系统解析/unrecoverable/xml/CustLauncher.xml 文件进行判断开机自动运行APP，如果APP不存在启动默认桌面
@@ -633,7 +634,7 @@ int cam_ioctrl(void* camera, int cmd, int param1, void* param2);
 | 名称       | 功能   |
 | --------   | :-----  |
 | 不可卸载    | 拷贝至/system/app |
-| 可卸载       | 系统中放置位置/system/vendor/appback 由程序nlserver拷贝至/data/app 并修改0666权限|
+| 可卸载       | 系统中放置位置/system/vendor/appback 由程序nlserver拷贝至/data/app 并修改0666权限，Android8之后采用安装器方式从该文件夹下安装 |
 
 # Property属性汇总列表
 
@@ -677,9 +678,43 @@ int cam_ioctrl(void* camera, int cmd, int param1, void* param2);
 | persist.sys.camdisableview  | 系统屏蔽相机view  |
 | persist.sys.wpa.skip  | wpa eapol skip check1，0 不跳过 1 跳过，默认0  |
 | persist.sys.blist.skip  | Black List skip check1，0 不跳过 1 跳过，默认0  |
-| persist.sys.scan.flashled  | 扫描引擎手电功能，0 不支持 1 支持，默认0  |
+| persist.sys.scan.flashled  | 扫描引擎手电，0 不支持 1 支持，默认0,由JNI检测设置 |
 | persist.sys.scan.flashstate  | 扫描引擎手电状态  |
+| persist.sys.scan.flashswitch | 扫描引擎手电开关设置（用于强行关闭该功能） |
 | persist.sys.scan.de3  | 判断是否是DE3扫描头 0 不是 1 是，默认0  |
 | persist.sys.nlsgms  | 判断是否是进入GMS测试状态 0 不是 1 是，默认0  |
 | persist.sys.forceview  | 是否显示 0 不是 1 是，默认0  |
 | persist.sys.screendim  | 背光进入省电POLICY_DIM时间 DimTime  = 显示时间- POLICY_DIM等待时间 如果是0 按原有值进行|
+| persist.sys.scan.gms  | 是否GMS测试模式下 0 不是 1 是，默认0  |
+| persist.sys.nls.libsuport | 读码服务是否加载lib |
+|  |  |
+
+nlsserver native服务
+
+| 名称       | 功能   | 兼容名称   |
+| --------   | :-----  | :-----  |
+| ro.boot.hw_ver | 硬件版本号 | - |
+| ro.boot.hardware.revision | 硬件版本号 | - |
+| ro.boot.boardid | 频段ID，从内核读出值  | - |
+| ro.boot.boardtype | 频段名称 | - |
+| ro.boot.hwversionid | 硬件ID，从内核读出值 | - |
+| ro.platform.id   | CPU ID | - |
+| ro.build.FnKeyValue |功能键名称| |
+| ro.build.shiftkey |功能键类型| |
+| ro.build.keyboard |键盘类型| |
+| persist.sys.batteryid   | 电池ID | |
+| persist.sys.tp.version   | 触摸屏版本 | |
+| persist.sys.lcd.version   | LCD版本 | |
+| persist.ro.BtMac   | BT地址 | |
+| persist.ro.WifiMac  | Wifi地址| |
+
+> 当前键盘布局功能键中有3种，系统中需要获取ro.build.shiftkey，获取当前功能键行为进行做出修改
+> 根据键盘布局上的丝印显示功能进行执行
+
+| 值   | 功能                                               |
+| ---- | :------------------------------------------------- |
+| 0    | 按下一次，切换状态(数字-大写-小写)                 |
+| 1    | 长按有效，放开无效 shift+F1 输出F1                 |
+| 2    | 按下后仅一次有效 shift 按下一次，再次按下F1 输出F1 |
+
+> **ro.build.FnKeyValue** 功能键键值 KeyEvent中（默认KEYCODE_SHIFT_LEFT），系统监控该键值作为功能键切换
